@@ -18,8 +18,8 @@ type render struct {
 	config *renderer.Config
 }
 
-// NewRenderer returns a new Renderer with given options.
-func NewRenderer(opts ...renderer.Option) renderer.Renderer {
+// New returns a new Renderer with given options.
+func New(opts ...renderer.Option) renderer.Renderer {
 	r := &render{
 		config: renderer.NewConfig(),
 	}
