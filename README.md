@@ -8,9 +8,6 @@ This [goldmark](https://github.com/yuin/goldmark) renderer extension adds suppor
 source := []byte("# Title\nParagraph *em **bold*** [link](/).")
 md := goldmark.New(
     goldmark.WithRenderer(formatter.NewRenderer()), // markdown output
-    goldmark.WithRendererOptions(
-        html.WithHardWraps(),
-    ),
 )
 if err := md.Convert(source, os.Stdout); err != nil {
     log.Fatal(err)
