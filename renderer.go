@@ -14,6 +14,27 @@ import (
 	"github.com/yuin/goldmark/util"
 )
 
+// Format settings
+var (
+	SkipHTML          = false
+	STXHeader         = true
+	LineBreak         = false
+	UseListMarker     = true
+	FencedCodeBlock   = "```"
+	ThematicBreak     = "----"
+	EntitiReplacement = map[string]string{
+		"&ldquo;":  `"`,
+		"&rdquo;":  `"`,
+		"&laquo;":  `"`,
+		"&raquo;":  `"`,
+		"&lsquo;":  `'`,
+		"&rsquo;":  `'`,
+		"&ndash;":  `--`,
+		"&mdash;":  `--`,
+		"&hellip;": `...`,
+	}
+)
+
 type render struct{}
 
 // Markdown is a markdown format renderer.
@@ -30,7 +51,7 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 			// nothing todo
 		case *ast.Heading:
 			if entering {
-				if n.Level > 2 {
+				if !STXHeader || n.Level > 2 {
 					fmt.Fprintf(w, "%s ", "######"[:n.Level])
 				}
 			} else {
@@ -38,13 +59,18 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 					io.WriteString(w, " ")
 					renderAttributes(w, n)
 				}
-				if n.Level < 3 {
+				if STXHeader && n.Level < 3 {
 					io.WriteString(w, "\n")
 					var length int
 					lines := n.Lines()
-					for i := 0; i < lines.Len(); i++ {
-						line := lines.At(i)
-						length += utf8.RuneCount(line.Value(source))
+					if LineBreak {
+						line := lines.At(lines.Len() - 1)
+						length = utf8.RuneCount(line.Value(source))
+					} else {
+						for i := 0; i < lines.Len(); i++ {
+							line := lines.At(i)
+							length += utf8.RuneCount(line.Value(source))
+						}
 					}
 					var divider = []byte("=")
 					if n.Level == 2 {
@@ -93,7 +119,7 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 					renderAttributes(w, n)
 					io.WriteString(w, "\n")
 				}
-				io.WriteString(w, "```")
+				io.WriteString(w, FencedCodeBlock)
 				if n.Info != nil {
 					w.Write(n.Info.Segment.Value(source))
 				}
@@ -103,7 +129,7 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 					line := lines.At(i)
 					w.Write(line.Value(source))
 				}
-				io.WriteString(w, "```\n\n")
+				io.WriteString(w, FencedCodeBlock+"\n\n")
 				return ast.WalkSkipChildren, nil
 			}
 		case *ast.HTMLBlock:
@@ -146,7 +172,13 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 						fmt.Fprintf(w, "%d", start)
 						start++
 					}
-					fmt.Fprintf(w, "%c ", n.Marker)
+					if UseListMarker {
+						fmt.Fprintf(w, "%c ", n.Marker)
+					} else if n.IsOrdered() {
+						io.WriteString(w, ". ")
+					} else {
+						io.WriteString(w, "- ")
+					}
 					text := bytes.TrimSpace(buf.Bytes())
 					buf.Reset()
 					lines := bytes.SplitAfter(text, []byte{'\n'})
@@ -192,7 +224,7 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 					renderAttributes(w, n)
 					io.WriteString(w, "\n")
 				}
-				io.WriteString(w, "----\n\n")
+				io.WriteString(w, ThematicBreak+"\n\n")
 			}
 		case *ast.AutoLink:
 			if entering {
@@ -237,20 +269,22 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 				}
 			}
 		case *ast.RawHTML:
-			if entering {
+			if !SkipHTML && entering {
 				lines := n.Segments
 				for i := 0; i < lines.Len(); i++ {
 					line := lines.At(i)
 					w.Write(line.Value(source))
 				}
-				return ast.WalkSkipChildren, nil
 			}
+			return ast.WalkSkipChildren, nil
 		case *ast.Text:
 			if entering {
 				w.Write(n.Segment.Value(source))
 				if n.SoftLineBreak() {
 					if n.HardLineBreak() {
 						io.WriteString(w, "\\\n")
+					} else if LineBreak {
+						io.WriteString(w, "\n")
 					} else {
 						io.WriteString(w, " ")
 					}
@@ -258,8 +292,13 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 			}
 		case *ast.String:
 			if entering {
-				if n.IsCode() {
-					w.Write(reHTMLEntity.ReplaceAllFunc(n.Value, htmlEntitiReplace))
+				if n.IsCode() && len(EntitiReplacement) > 0 {
+					w.Write(reHTMLEntity.ReplaceAllFunc(n.Value, func(ent []byte) []byte {
+						if val, ok := EntitiReplacement[string(ent)]; ok {
+							return []byte(val)
+						}
+						return ent
+					}))
 				} else {
 					w.Write(n.Value)
 				}
@@ -453,21 +492,6 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 }
 
 var reHTMLEntity = regexp.MustCompile(`&[[:alpha:]]{5,6};`)
-
-func htmlEntitiReplace(val []byte) []byte {
-	switch string(val) {
-	case "&ldquo;", "&rdquo;", "&laquo;", "&raquo;":
-		return []byte{'"'}
-	case "&lsquo;", "&rsquo;":
-		return []byte{'\''}
-	case "&ndash;", "&mdash;":
-		return []byte("--")
-	case "&hellip;":
-		return []byte("...")
-	default:
-		return val
-	}
-}
 
 func renderAttributes(w io.Writer, node ast.Node) {
 	var buf bytes.Buffer
