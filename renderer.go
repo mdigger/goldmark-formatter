@@ -14,33 +14,13 @@ import (
 	"github.com/yuin/goldmark/util"
 )
 
-type render struct {
-	config *renderer.Config
-}
+type render struct{}
 
-// New returns a new Renderer with given options.
-func New(opts ...renderer.Option) renderer.Renderer {
-	r := &render{
-		config: renderer.NewConfig(),
-	}
-	r.AddOptions(opts...)
-	return r
-}
+// Markdown is a markdown format renderer.
+var Markdown renderer.Renderer = new(render)
 
 // AddOptions adds given option to this renderer.
-func (r *render) AddOptions(opts ...renderer.Option) {
-	for _, opt := range opts {
-		opt.SetConfig(r.config)
-	}
-}
-
-// HardWraps is an option name used in WithHardWraps.
-const optHardWraps renderer.OptionName = "HardWraps"
-
-func (r *render) hardWrap() bool {
-	val, ok := r.config.Options[optHardWraps]
-	return ok && val.(bool)
-}
+func (r *render) AddOptions(opts ...renderer.Option) {}
 
 // Write render node as Markdown.
 func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
@@ -60,16 +40,11 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 				}
 				if n.Level < 3 {
 					io.WriteString(w, "\n")
-					lines := n.Lines()
 					var length int
-					if r.hardWrap() {
-						line := lines.At(lines.Len() - 1) // last line
-						length = utf8.RuneCount(line.Value(source))
-					} else {
-						for i := 0; i < lines.Len(); i++ {
-							line := lines.At(i)
-							length += utf8.RuneCount(line.Value(source))
-						}
+					lines := n.Lines()
+					for i := 0; i < lines.Len(); i++ {
+						line := lines.At(i)
+						length += utf8.RuneCount(line.Value(source))
 					}
 					var divider = []byte("=")
 					if n.Level == 2 {
@@ -120,7 +95,6 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 				}
 				io.WriteString(w, "```")
 				if n.Info != nil {
-					io.WriteString(w, " ")
 					w.Write(n.Info.Segment.Value(source))
 				}
 				io.WriteString(w, "\n")
@@ -218,7 +192,7 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 					renderAttributes(w, n)
 					io.WriteString(w, "\n")
 				}
-				io.WriteString(w, "* * *\n\n")
+				io.WriteString(w, "----\n\n")
 			}
 		case *ast.AutoLink:
 			if entering {
@@ -227,12 +201,12 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 		case *ast.CodeSpan:
 			io.WriteString(w, "`")
 		case *ast.Emphasis:
-			io.WriteString(w, "**"[:n.Level])
-			// if n.Level == 1 {
-			// 	io.WriteString(w, "_")
-			// } else {
-			// 	io.WriteString(w, "**")
-			// }
+			// io.WriteString(w, "**"[:n.Level])
+			if n.Level == 1 {
+				io.WriteString(w, "_")
+			} else {
+				io.WriteString(w, "**")
+			}
 		case *ast.Link:
 			if entering {
 				io.WriteString(w, "[")
@@ -275,7 +249,7 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 			if entering {
 				w.Write(n.Segment.Value(source))
 				if n.SoftLineBreak() {
-					if n.HardLineBreak() || r.hardWrap() {
+					if n.HardLineBreak() {
 						io.WriteString(w, "\\\n")
 					} else {
 						io.WriteString(w, " ")
@@ -351,7 +325,6 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 				for child := n.FirstChild(); child != nil; child = child.NextSibling() {
 					r.Render(&buf, source, child)
 				}
-				// text := bytes.TrimSuffix(buf.Bytes(), []byte{'\n'})
 				text := bytes.TrimSpace(buf.Bytes())
 				lines := bytes.SplitAfter(text, []byte{'\n'})
 				for i, line := range lines {
