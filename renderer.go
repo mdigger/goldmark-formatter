@@ -12,6 +12,7 @@ import (
 	east "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/util"
+	"gopkg.in/yaml.v3"
 )
 
 // Format settings
@@ -49,11 +50,24 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 		switch n := node.(type) {
 
 		case *ast.Document:
+			// markdown metadata if defined
+			if meta := n.Meta(); len(meta) > 0 {
+				_, _ = io.WriteString(w, "---\n")
+
+				enc := yaml.NewEncoder(w)
+				err := enc.Encode(meta)
+				enc.Close()
+				if err != nil {
+					return ast.WalkStop, err
+				}
+
+				_, _ = io.WriteString(w, "---\n")
+			}
 
 		case *ast.Heading:
 			if entering {
 				if !STXHeader || n.Level > 2 {
-					fmt.Fprintf(w, "%s ", "######"[:n.Level])
+					_, _ = fmt.Fprintf(w, "%s ", "######"[:n.Level])
 				}
 
 			} else {
@@ -64,6 +78,7 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 
 				if STXHeader && n.Level < 3 {
 					_, _ = io.WriteString(w, "\n")
+
 					lines := n.Lines()
 					var length int
 					if LineBreak {
@@ -80,6 +95,7 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 					if n.Level == 2 {
 						divider = []byte("-")
 					}
+
 					_, _ = w.Write(bytes.Repeat(divider, length))
 				}
 
