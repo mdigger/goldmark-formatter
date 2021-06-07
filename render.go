@@ -22,7 +22,7 @@ var (
 	LineBreak         = false
 	UseListMarker     = true
 	FencedCodeBlock   = "```"
-	ThematicBreak     = "* * * *"
+	ThematicBreak     = "----"
 	EntityReplacement = map[string]string{
 		"&ldquo;":  `"`,
 		"&rdquo;":  `"`,
@@ -434,7 +434,9 @@ func Render(w io.Writer, source []byte, node ast.Node) (err error) {
 		case *east.FootnoteBacklink:
 
 		case *east.FootnoteList:
-			if !entering {
+			if entering {
+				write("\n")
+			} else {
 				write("\n")
 				if n.Attributes() != nil {
 					writeAttributes(n)
