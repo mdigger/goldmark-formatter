@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	lineblocks "github.com/mdigger/goldmark-lineblocks"
 	"github.com/yuin/goldmark/ast"
 	east "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/renderer"
@@ -31,53 +32,91 @@ var (
 		"&lsquo;":  `'`,
 		"&rsquo;":  `'`,
 		"&ndash;":  `--`,
-		"&mdash;":  `--`,
+		"&mdash;":  `---`,
 		"&hellip;": `...`,
 	}
 )
 
 type render struct{}
 
-// Markdown is a markdown format renderer.
-var Markdown renderer.Renderer = new(render)
-
 // AddOptions adds given option to this renderer.
 func (r *render) AddOptions(opts ...renderer.Option) {}
 
 // Write render node as Markdown.
-func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
+func (r *render) Render(w io.Writer, source []byte, node ast.Node) (err error) {
+	defer func() {
+		_ = recover() // intercept the error
+	}()
+
+	// auxiliary feature for recording
+	// when an error causes panic and automatically sets the error value
+	write := func(str string, a ...interface{}) {
+		if _, err = fmt.Fprintf(w, str, a...); err != nil {
+			panic(err)
+		}
+	}
+
+	// writeAttributes write markdown attributes to writer if exists
+	writeAttributes := func(node ast.Node) {
+		len := len(node.Attributes())
+		if len == 0 {
+			return
+		}
+
+		attrs := make([]string, 0, len)
+
+		if value, ok := node.AttributeString("id"); ok {
+			attrs = append(attrs, fmt.Sprintf("#%s", value))
+		}
+
+		if value, ok := node.AttributeString("class"); ok {
+			for _, class := range bytes.Fields(value.([]byte)) {
+				attrs = append(attrs, fmt.Sprintf(".%s", class))
+			}
+		}
+
+		for _, attr := range node.Attributes() {
+			switch util.BytesToReadOnlyString(attr.Name) {
+			case "id", "class": // ignore
+			default:
+				attrs = append(attrs, fmt.Sprintf("%s=%q ", attr.Name, attr.Value))
+			}
+		}
+
+		write("{%s}", strings.Join(attrs, " "))
+	}
+
 	return ast.Walk(node, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
 		switch n := node.(type) {
 
 		case *ast.Document:
 			// markdown metadata if defined
 			if meta := n.Meta(); len(meta) > 0 {
-				_, _ = io.WriteString(w, "---\n")
+				write("---\n")
 
 				enc := yaml.NewEncoder(w)
-				err := enc.Encode(meta)
+				err = enc.Encode(meta)
 				enc.Close()
 				if err != nil {
 					return ast.WalkStop, err
 				}
 
-				_, _ = io.WriteString(w, "---\n")
+				write("---\n")
 			}
 
 		case *ast.Heading:
 			if entering {
 				if !STXHeader || n.Level > 2 {
-					_, _ = fmt.Fprintf(w, "%s ", "######"[:n.Level])
+					write("%s ", "######"[:n.Level])
 				}
-
 			} else {
 				if n.Attributes() != nil {
-					_, _ = io.WriteString(w, " ")
-					renderAttributes(w, n)
+					write(" ")
+					writeAttributes(n)
 				}
 
 				if STXHeader && n.Level < 3 {
-					_, _ = io.WriteString(w, "\n")
+					write("\n")
 
 					lines := n.Lines()
 					var length int
@@ -91,40 +130,41 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 						}
 					}
 
-					divider := []byte("=")
+					divider := "="
 					if n.Level == 2 {
-						divider = []byte("-")
+						divider = "-"
 					}
-
-					_, _ = w.Write(bytes.Repeat(divider, length))
+					write(strings.Repeat(divider, length))
 				}
 
-				_, _ = io.WriteString(w, "\n\n")
+				write("\n\n")
 			}
 
 		case *ast.Blockquote:
 			if entering {
 				if n.Attributes() != nil {
-					renderAttributes(w, n)
-					_, _ = io.WriteString(w, "\n")
+					writeAttributes(n)
+					write("\n")
 				}
 
 				var buf bytes.Buffer
 				for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-					_ = r.Render(&buf, source, child)
+					if err = r.Render(&buf, source, child); err != nil {
+						return ast.WalkStop, err
+					}
 				}
 
 				text := bytes.TrimSpace(buf.Bytes())
 				lines := bytes.SplitAfter(text, []byte{'\n'})
 				for _, line := range lines {
-					_, _ = io.WriteString(w, ">")
+					write(">")
 					if len(line) > 0 && line[0] != '>' && line[0] != '\n' {
-						_, _ = io.WriteString(w, " ")
+						write(" ")
 					}
-					_, _ = w.Write(line)
+					write("%s", line)
 				}
 
-				_, _ = io.WriteString(w, "\n\n")
+				write("\n\n")
 				return ast.WalkSkipChildren, nil
 			}
 
@@ -132,35 +172,34 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 			if entering {
 				lines := n.Lines()
 				for i := 0; i < lines.Len(); i++ {
-					_, _ = io.WriteString(w, "    ")
 					line := lines.At(i)
-					_, _ = w.Write(line.Value(source))
+					write("    %s", line.Value(source))
 				}
 
-				_, _ = io.WriteString(w, "\n")
+				write("\n")
 				return ast.WalkSkipChildren, nil
 			}
 
 		case *ast.FencedCodeBlock:
 			if entering {
 				if n.Attributes() != nil {
-					renderAttributes(w, n)
-					_, _ = io.WriteString(w, "\n")
+					writeAttributes(n)
+					write("\n")
 				}
 
-				_, _ = io.WriteString(w, FencedCodeBlock)
+				write(FencedCodeBlock)
 				if n.Info != nil {
-					_, _ = w.Write(n.Info.Segment.Value(source))
+					write("%s", n.Info.Segment.Value(source))
 				}
-				_, _ = io.WriteString(w, "\n")
+				write("\n")
 
 				lines := n.Lines()
 				for i := 0; i < lines.Len(); i++ {
 					line := lines.At(i)
-					_, _ = w.Write(line.Value(source))
+					write("%s", line.Value(source))
 				}
 
-				_, _ = io.WriteString(w, FencedCodeBlock+"\n\n")
+				write("%s\n\n", FencedCodeBlock)
 				return ast.WalkSkipChildren, nil
 			}
 
@@ -169,22 +208,21 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 				lines := n.Lines()
 				for i := 0; i < lines.Len(); i++ {
 					line := lines.At(i)
-					_, _ = w.Write(line.Value(source))
+					write("%s", line.Value(source))
 				}
 
 			} else {
 				if n.HasClosure() {
-					_, _ = w.Write(n.ClosureLine.Value(source))
+					write("%s", n.ClosureLine.Value(source))
 				}
-
-				_, _ = io.WriteString(w, "\n")
+				write("\n")
 			}
 
 		case *ast.List:
 			if entering {
 				if n.Attributes() != nil {
-					renderAttributes(w, n)
-					_, _ = io.WriteString(w, "\n")
+					writeAttributes(n)
+					write("\n")
 				}
 
 				start := n.Start
@@ -200,21 +238,23 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 				// all ListItems
 				for nl := n.FirstChild(); nl != nil; nl = nl.NextSibling() {
 					for chld := nl.FirstChild(); chld != nil; chld = chld.NextSibling() {
-						_ = r.Render(&buf, source, chld)
+						if err = r.Render(&buf, source, chld); err != nil {
+							return ast.WalkStop, err
+						}
 					}
 
 					// print list item
 					if n.IsOrdered() {
-						fmt.Fprintf(w, "%d", start)
+						write("%d", start)
 						start++
 					}
 					switch {
 					case UseListMarker:
-						_, _ = fmt.Fprintf(w, "%c ", n.Marker)
+						write("%c ", n.Marker)
 					case n.IsOrdered():
-						_, _ = io.WriteString(w, ". ")
+						write(". ")
 					default:
-						_, _ = io.WriteString(w, "- ")
+						write("- ")
 					}
 
 					text := bytes.TrimSpace(buf.Bytes())
@@ -223,19 +263,19 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 					lines := bytes.SplitAfter(text, []byte{'\n'})
 					for i, line := range lines {
 						if i > 0 && len(line) > 0 && line[0] != '\n' {
-							_, _ = io.WriteString(w, indent)
+							write(indent)
 						}
-						_, _ = w.Write(line)
+						write("%s", line)
 					}
 
-					_, _ = io.WriteString(w, "\n")
+					write("\n")
 					if !n.IsTight {
-						_, _ = io.WriteString(w, "\n")
+						write("\n")
 					}
 				}
 
 				if n.IsTight {
-					_, _ = io.WriteString(w, "\n")
+					write("\n")
 				}
 
 				return ast.WalkSkipChildren, nil
@@ -247,83 +287,72 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 		case *ast.Paragraph:
 			if entering {
 				if n.Attributes() != nil {
-					renderAttributes(w, n)
-					_, _ = io.WriteString(w, "\n")
+					writeAttributes(n)
+					write("\n")
 				}
 
 				if _, ok := n.PreviousSibling().(*ast.TextBlock); ok {
-					_, _ = io.WriteString(w, "\n")
+					write("\n")
 				}
 
 			} else {
-				_, _ = io.WriteString(w, "\n\n")
+				write("\n\n")
 			}
 
 		case *ast.TextBlock:
 			if !entering {
 				if _, ok := n.NextSibling().(ast.Node); ok && n.FirstChild() != nil {
-					_, _ = io.WriteString(w, "\n")
+					write("\n")
 				}
 			}
 
 		case *ast.ThematicBreak:
 			if entering {
 				if n.Attributes() != nil {
-					renderAttributes(w, n)
-					_, _ = io.WriteString(w, "\n")
+					writeAttributes(n)
+					write("\n")
 				}
-
-				_, _ = io.WriteString(w, ThematicBreak+"\n\n")
+				write("%s\n\n", ThematicBreak)
 			}
 
 		case *ast.AutoLink:
 			if entering {
-				_, _ = fmt.Fprintf(w, "<%s>", n.Label(source))
+				write("<%s>", n.Label(source))
 			}
 
 		case *ast.CodeSpan:
-			_, _ = io.WriteString(w, "`")
+			write("`")
 
 		case *ast.Emphasis:
-			// io.WriteString(w, "**"[:n.Level])
 			if n.Level == 1 {
-				_, _ = io.WriteString(w, "_")
+				write("_")
 			} else {
-				_, _ = io.WriteString(w, "**")
+				write("**")
 			}
 
 		case *ast.Link:
 			if entering {
-				_, _ = io.WriteString(w, "[")
+				write("[")
 			} else {
-				_, _ = io.WriteString(w, "](")
-				_, _ = w.Write(n.Destination)
+				write("](%s", n.Destination)
 				if n.Title != nil {
-					_, _ = fmt.Fprintf(w, " %q", n.Title)
+					write(" %q", n.Title)
 				}
-				_, _ = io.WriteString(w, ")")
-
-				if n.Attributes() != nil {
-					renderAttributes(w, n)
-				}
+				write(")")
+				writeAttributes(n)
 
 			}
 
 		case *ast.Image:
 			if entering {
-				_, _ = io.WriteString(w, "![")
+				write("![")
 			} else {
-				_, _ = io.WriteString(w, "](")
-				_, _ = w.Write(n.Destination)
-
+				write("](%s", n.Destination)
 				if n.Title != nil {
-					fmt.Fprintf(w, " %q", n.Title)
+					write(" %q", n.Title)
 				}
-				_, _ = io.WriteString(w, ")")
-
-				if n.Attributes() != nil {
-					renderAttributes(w, n)
-				}
+				write(")")
+				writeAttributes(n)
 			}
 
 		case *ast.RawHTML:
@@ -331,7 +360,7 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 				lines := n.Segments
 				for i := 0; i < lines.Len(); i++ {
 					line := lines.At(i)
-					_, _ = w.Write(line.Value(source))
+					write("%s", line.Value(source))
 				}
 			}
 
@@ -339,15 +368,15 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 
 		case *ast.Text:
 			if entering {
-				_, _ = w.Write(n.Segment.Value(source))
+				write("%s", n.Segment.Value(source))
 				if n.SoftLineBreak() {
 					switch {
 					case n.HardLineBreak():
-						_, _ = io.WriteString(w, "\\\n")
+						write("\\\n")
 					case LineBreak:
-						_, _ = io.WriteString(w, "\n")
+						write("\n")
 					default:
-						_, _ = io.WriteString(w, " ")
+						write(" ")
 					}
 				}
 			}
@@ -355,52 +384,53 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 		case *ast.String:
 			if entering {
 				if n.IsCode() && len(EntityReplacement) > 0 {
-					_, _ = w.Write(reHTMLEntity.ReplaceAllFunc(n.Value, func(ent []byte) []byte {
+					write("%s", reHTMLEntity.ReplaceAllFunc(n.Value, func(ent []byte) []byte {
 						if val, ok := EntityReplacement[string(ent)]; ok {
 							return []byte(val)
 						}
 						return ent
 					}))
-
 				} else {
-					_, _ = w.Write(n.Value)
+					write("%s", n.Value)
 				}
 			}
 
 		case *east.Strikethrough:
-			_, _ = io.WriteString(w, "~~")
+			write("~~")
 
 		case *east.TaskCheckBox:
 			if entering {
 				if n.IsChecked {
-					_, _ = io.WriteString(w, "[x] ")
+					write("[x] ")
 				} else {
-					_, _ = io.WriteString(w, "[ ] ")
+					write("[ ] ")
 				}
 			}
 
 		case *east.FootnoteLink:
 			if entering {
-				_, _ = fmt.Fprintf(w, "[^%d]", n.Index)
+				write("[^%d]", n.Index)
 			}
 
 		case *east.Footnote:
 			if entering {
-				_, _ = fmt.Fprintf(w, "[^%d]: ", n.Index)
+				write("[^%d]: ", n.Index)
 				var buf bytes.Buffer
 				for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-					_ = r.Render(&buf, source, child)
+					if err = r.Render(&buf, source, child); err != nil {
+						return ast.WalkStop, err
+					}
 				}
 
 				text := bytes.TrimSpace(buf.Bytes())
 				lines := bytes.SplitAfter(text, []byte{'\n'})
 				for i, line := range lines {
 					if i > 0 && len(line) > 0 && line[0] != '\n' {
-						_, _ = io.WriteString(w, "    ")
+						write("    ")
 					}
-					_, _ = w.Write(line)
+					write("%s", line)
 				}
-				_, _ = io.WriteString(w, "\n\n")
+				write("\n\n")
 
 				return ast.WalkSkipChildren, nil
 			}
@@ -409,47 +439,47 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 
 		case *east.FootnoteList:
 			if entering {
-				_, _ = io.WriteString(w, "\n")
-
+				write("\n")
 				if n.Attributes() != nil {
-					renderAttributes(w, n)
-					_, _ = io.WriteString(w, "\n")
+					writeAttributes(n)
+					write("\n")
 				}
 			}
 
 		case *east.DefinitionList:
 			if !entering {
-				_, _ = io.WriteString(w, "\n")
-
+				write("\n")
 				if n.Attributes() != nil {
-					renderAttributes(w, n)
-					_, _ = io.WriteString(w, "\n")
+					writeAttributes(n)
+					write("\n")
 				}
 			}
 
 		case *east.DefinitionTerm:
 			if !entering {
-				_, _ = io.WriteString(w, "\n")
+				write("\n")
 			}
 
 		case *east.DefinitionDescription:
 			if entering {
-				_, _ = io.WriteString(w, ": ")
+				write(": ")
 
 				var buf bytes.Buffer
 				for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-					_ = r.Render(&buf, source, child)
+					if err = r.Render(&buf, source, child); err != nil {
+						return ast.WalkStop, err
+					}
 				}
 
 				text := bytes.TrimSpace(buf.Bytes())
 				lines := bytes.SplitAfter(text, []byte{'\n'})
 				for i, line := range lines {
 					if i > 0 && len(line) > 0 && line[0] != '\n' {
-						_, _ = io.WriteString(w, "  ")
+						write("  ")
 					}
-					_, _ = w.Write(line)
+					write("%s", line)
 				}
-				_, _ = io.WriteString(w, "\n")
+				write("\n")
 
 				return ast.WalkSkipChildren, nil
 			}
@@ -457,8 +487,8 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 		case *east.Table:
 			if entering {
 				if n.Attributes() != nil {
-					renderAttributes(w, n)
-					_, _ = io.WriteString(w, "\n")
+					writeAttributes(n)
+					write("\n")
 				}
 
 				// collect all cells text
@@ -470,7 +500,9 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 					column := 0
 					for cell := row.FirstChild(); cell != nil; cell = cell.NextSibling() {
 						for child := cell.FirstChild(); child != nil; child = child.NextSibling() {
-							_ = r.Render(&buf, source, child)
+							if err = r.Render(&buf, source, child); err != nil {
+								return ast.WalkStop, err
+							}
 						}
 						text := buf.String()
 						if l := utf8.RuneCountInString(text); l > columns[column] {
@@ -486,95 +518,64 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 
 				for i, row := range table {
 					for j, cell := range row {
-						_, _ = io.WriteString(w, "| ")
 						indent := strings.Repeat(" ",
 							columns[j]-utf8.RuneCountInString(cell))
 
 						switch n.Alignments[j] {
-						// case east.AlignLeft:
 						case east.AlignRight:
-							_, _ = io.WriteString(w, indent)
-							_, _ = io.WriteString(w, cell)
+							write("| %s%s ", indent, cell)
 						case east.AlignCenter:
-							_, _ = io.WriteString(w, indent[:len(indent)/2])
-							_, _ = io.WriteString(w, cell)
-							_, _ = io.WriteString(w, indent[len(indent)/2:])
+							write("| %s%s%s ", indent[:len(indent)/2], cell, indent[len(indent)/2:])
 						default:
-							_, _ = io.WriteString(w, cell)
-							_, _ = io.WriteString(w, indent)
+							write("| %s%s ", cell, indent)
 						}
-						_, _ = io.WriteString(w, " ")
-						// io.WriteString(w, cell)
-						// TODO: add align
-						// io.WriteString(w, strings.Repeat(" ",
-						// 	columns[j]-utf8.RuneCountInString(cell)+1))
 					}
 
 					if i == 0 {
-						_, _ = io.WriteString(w, "|\n")
+						write("|\n")
 						// header divider
 						for j, align := range n.Alignments {
-							_, _ = io.WriteString(w, "|")
 							switch align {
 							case east.AlignLeft:
-								_, _ = io.WriteString(w, ":")
-								_, _ = io.WriteString(w, strings.Repeat("-", columns[j]+1))
+								write("|:%s", strings.Repeat("-", columns[j]+1))
 							case east.AlignRight:
-								_, _ = io.WriteString(w, strings.Repeat("-", columns[j]+1))
-								_, _ = io.WriteString(w, ":")
+								write("|%s:", strings.Repeat("-", columns[j]+1))
 							case east.AlignCenter:
-								_, _ = io.WriteString(w, ":")
-								_, _ = io.WriteString(w, strings.Repeat("-", columns[j]))
-								_, _ = io.WriteString(w, ":")
+								write("|:%s:", strings.Repeat("-", columns[j]))
 							default:
-								_, _ = io.WriteString(w, strings.Repeat("-", columns[j]+2))
+								write("|%s", strings.Repeat("-", columns[j]+2))
 							}
-							// _, _ = io.WriteString(w, " ")
 						}
 					}
 
-					_, _ = io.WriteString(w, "|\n")
+					write("|\n")
 				}
 
 				return ast.WalkSkipChildren, nil
 			}
 
-			_, _ = io.WriteString(w, "\n")
+			write("\n")
 
 		case *east.TableHeader:
-			// if entering {
-			// 	io.WriteString(w, "|")
-			// } else {
-			// 	io.WriteString(w, "\n|")
-			// 	for _, align := range n.Parent().(*east.Table).Alignments {
-			// 		switch align {
-			// 		case east.AlignLeft:
-			// 			io.WriteString(w, " :---")
-			// 		case east.AlignRight:
-			// 			io.WriteString(w, " ---:")
-			// 		case east.AlignCenter:
-			// 			io.WriteString(w, " :---:")
-			// 		default:
-			// 			io.WriteString(w, " ---")
-			// 		}
-			// 		io.WriteString(w, " |")
-			// 	}
-			// 	io.WriteString(w, "\n")
-			// }
 
 		case *east.TableRow:
-			// if entering {
-			// 	io.WriteString(w, "|")
-			// } else {
-			// 	io.WriteString(w, "\n")
-			// }
 
 		case *east.TableCell:
-			// if entering {
-			// 	io.WriteString(w, " ")
-			// } else {
-			// 	io.WriteString(w, " |")
-			// }
+
+		case *lineblocks.LineBlock:
+			if !entering {
+				write("\n")
+			}
+
+		case *lineblocks.LineBlockItem:
+			if entering {
+				write("| ")
+				for i := 0; i < n.Padding; i++ {
+					write(" ")
+				}
+			} else {
+				write("\n")
+			}
 		}
 
 		return ast.WalkContinue, nil
@@ -582,26 +583,3 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) error {
 }
 
 var reHTMLEntity = regexp.MustCompile(`&[[:alpha:]]{5,6};`)
-
-func renderAttributes(w io.Writer, node ast.Node) {
-	var buf bytes.Buffer
-	if value, ok := node.AttributeString("id"); ok {
-		fmt.Fprintf(&buf, "#%s ", value)
-	}
-
-	if value, ok := node.AttributeString("class"); ok {
-		for _, class := range bytes.Fields(value.([]byte)) {
-			fmt.Fprintf(&buf, ".%s ", class)
-		}
-	}
-
-	for _, attr := range node.Attributes() {
-		switch util.BytesToReadOnlyString(attr.Name) {
-		case "id", "class": // ignore
-		default:
-			fmt.Fprintf(&buf, "%s=%q ", attr.Name, attr.Value)
-		}
-	}
-
-	fmt.Fprintf(w, "{%s}", util.TrimRightSpace(buf.Bytes()))
-}

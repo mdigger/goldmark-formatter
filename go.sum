@@ -1,3 +1,7 @@
+github.com/mdigger/goldmark-lineblocks v0.0.0-20210607102222-2c57c0f31f62 h1:LE7OVPzU2TW4ZFoFC5Ovzj/hmJNFpsmp4PcQheHHK+g=
+github.com/mdigger/goldmark-lineblocks v0.0.0-20210607102222-2c57c0f31f62/go.mod h1:FFIXm9N+OYeUzXLbjDj/v+caHaR9Acba7wvU5icSINw=
+github.com/mdigger/goldmark-lineblocks v0.0.0-20210607112808-0ace3aa9a7d3 h1:l9zG/Y6Ce1Ge78KG94ZhZA8cE5yIo2UN37sv3yFGocI=
+github.com/mdigger/goldmark-lineblocks v0.0.0-20210607112808-0ace3aa9a7d3/go.mod h1:FFIXm9N+OYeUzXLbjDj/v+caHaR9Acba7wvU5icSINw=
 github.com/yuin/goldmark v1.3.7 h1:NSaHgaeJFCtWXCBkBKXw0rhgMuJ0VoE9FB5mWldcrQ4=
 github.com/yuin/goldmark v1.3.7/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1Zlc8k=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=

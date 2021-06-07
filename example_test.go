@@ -5,15 +5,12 @@ import (
 	"os"
 
 	formatter "github.com/mdigger/goldmark-formatter"
-	"github.com/yuin/goldmark"
 )
 
 func Example() {
 	source := []byte("# Title\nParagraph *em **bold*** [link](/).")
-	md := goldmark.New(
-		goldmark.WithRenderer(formatter.Markdown), // markdown output
-	)
-	if err := md.Convert(source, os.Stdout); err != nil {
+	err := formatter.Format(source, os.Stdout)
+	if err != nil {
 		log.Fatal(err)
 	}
 	// Output:
