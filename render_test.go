@@ -16,3 +16,18 @@ func TestFormatter(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestFormatter2(t *testing.T) {
+	source := []byte(`
+| ddd | ssss |
+| --- | ---- |
+| ssss | ssss |
+{#id .class}
+`)
+
+	// STXHeader = false
+	err := Format(source, os.Stdout)
+	if err != nil {
+		t.Fatal(err)
+	}
+}

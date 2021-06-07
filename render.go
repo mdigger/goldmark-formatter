@@ -11,7 +11,6 @@ import (
 	lineblocks "github.com/mdigger/goldmark-lineblocks"
 	"github.com/yuin/goldmark/ast"
 	east "github.com/yuin/goldmark/extension/ast"
-	"github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/util"
 	"gopkg.in/yaml.v3"
 )
@@ -23,7 +22,7 @@ var (
 	LineBreak         = false
 	UseListMarker     = true
 	FencedCodeBlock   = "```"
-	ThematicBreak     = "----"
+	ThematicBreak     = "* * * *"
 	EntityReplacement = map[string]string{
 		"&ldquo;":  `"`,
 		"&rdquo;":  `"`,
@@ -37,15 +36,16 @@ var (
 	}
 )
 
-type render struct{}
-
-// AddOptions adds given option to this renderer.
-func (r *render) AddOptions(opts ...renderer.Option) {}
-
 // Write render node as Markdown.
-func (r *render) Render(w io.Writer, source []byte, node ast.Node) (err error) {
+func render(w io.Writer, source []byte, node ast.Node) (err error) {
 	defer func() {
-		_ = recover() // intercept the error
+		if p := recover(); p != nil && err == nil {
+			if e, ok := p.(error); ok {
+				err = e
+			} else {
+				err = fmt.Errorf("%v", p)
+			}
+		}
 	}()
 
 	// auxiliary feature for recording
@@ -126,7 +126,8 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) (err error) {
 					} else {
 						for i := 0; i < lines.Len(); i++ {
 							line := lines.At(i)
-							length += utf8.RuneCount(line.Value(source))
+							length += utf8.RuneCount(
+								util.TrimRightSpace(line.Value(source)))
 						}
 					}
 
@@ -142,14 +143,9 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) (err error) {
 
 		case *ast.Blockquote:
 			if entering {
-				if n.Attributes() != nil {
-					writeAttributes(n)
-					write("\n")
-				}
-
 				var buf bytes.Buffer
 				for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-					if err = r.Render(&buf, source, child); err != nil {
+					if err = render(&buf, source, child); err != nil {
 						return ast.WalkStop, err
 					}
 				}
@@ -164,8 +160,13 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) (err error) {
 					write("%s", line)
 				}
 
-				write("\n\n")
 				return ast.WalkSkipChildren, nil
+			} else {
+				if n.Attributes() != nil {
+					write("\n")
+					writeAttributes(n)
+				}
+				write("\n\n")
 			}
 
 		case *ast.CodeBlock:
@@ -182,11 +183,6 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) (err error) {
 
 		case *ast.FencedCodeBlock:
 			if entering {
-				if n.Attributes() != nil {
-					writeAttributes(n)
-					write("\n")
-				}
-
 				write(FencedCodeBlock)
 				if n.Info != nil {
 					write("%s", n.Info.Segment.Value(source))
@@ -199,8 +195,14 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) (err error) {
 					write("%s", line.Value(source))
 				}
 
-				write("%s\n\n", FencedCodeBlock)
+				write(FencedCodeBlock)
 				return ast.WalkSkipChildren, nil
+			} else {
+				if n.Attributes() != nil {
+					write("\n")
+					writeAttributes(n)
+				}
+				write("\n\n")
 			}
 
 		case *ast.HTMLBlock:
@@ -220,11 +222,6 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) (err error) {
 
 		case *ast.List:
 			if entering {
-				if n.Attributes() != nil {
-					writeAttributes(n)
-					write("\n")
-				}
-
 				start := n.Start
 				if start == 0 {
 					start = 1
@@ -238,7 +235,7 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) (err error) {
 				// all ListItems
 				for nl := n.FirstChild(); nl != nil; nl = nl.NextSibling() {
 					for chld := nl.FirstChild(); chld != nil; chld = chld.NextSibling() {
-						if err = r.Render(&buf, source, chld); err != nil {
+						if err = render(&buf, source, chld); err != nil {
 							return ast.WalkStop, err
 						}
 					}
@@ -286,16 +283,14 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) (err error) {
 
 		case *ast.Paragraph:
 			if entering {
-				if n.Attributes() != nil {
-					writeAttributes(n)
-					write("\n")
-				}
-
 				if _, ok := n.PreviousSibling().(*ast.TextBlock); ok {
 					write("\n")
 				}
-
 			} else {
+				if n.Attributes() != nil {
+					write("\n")
+					writeAttributes(n)
+				}
 				write("\n\n")
 			}
 
@@ -308,11 +303,13 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) (err error) {
 
 		case *ast.ThematicBreak:
 			if entering {
+				write(ThematicBreak)
+			} else {
 				if n.Attributes() != nil {
 					writeAttributes(n)
 					write("\n")
 				}
-				write("%s\n\n", ThematicBreak)
+				write("\n\n")
 			}
 
 		case *ast.AutoLink:
@@ -340,7 +337,6 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) (err error) {
 				}
 				write(")")
 				writeAttributes(n)
-
 			}
 
 		case *ast.Image:
@@ -417,7 +413,7 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) (err error) {
 				write("[^%d]: ", n.Index)
 				var buf bytes.Buffer
 				for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-					if err = r.Render(&buf, source, child); err != nil {
+					if err = render(&buf, source, child); err != nil {
 						return ast.WalkStop, err
 					}
 				}
@@ -438,7 +434,7 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) (err error) {
 		case *east.FootnoteBacklink:
 
 		case *east.FootnoteList:
-			if entering {
+			if !entering {
 				write("\n")
 				if n.Attributes() != nil {
 					writeAttributes(n)
@@ -466,7 +462,7 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) (err error) {
 
 				var buf bytes.Buffer
 				for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-					if err = r.Render(&buf, source, child); err != nil {
+					if err = render(&buf, source, child); err != nil {
 						return ast.WalkStop, err
 					}
 				}
@@ -486,11 +482,6 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) (err error) {
 
 		case *east.Table:
 			if entering {
-				if n.Attributes() != nil {
-					writeAttributes(n)
-					write("\n")
-				}
-
 				// collect all cells text
 				var buf bytes.Buffer
 				table := make([][]string, 0, n.ChildCount())
@@ -500,7 +491,7 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) (err error) {
 					column := 0
 					for cell := row.FirstChild(); cell != nil; cell = cell.NextSibling() {
 						for child := cell.FirstChild(); child != nil; child = child.NextSibling() {
-							if err = r.Render(&buf, source, child); err != nil {
+							if err = render(&buf, source, child); err != nil {
 								return ast.WalkStop, err
 							}
 						}
@@ -552,6 +543,11 @@ func (r *render) Render(w io.Writer, source []byte, node ast.Node) (err error) {
 				}
 
 				return ast.WalkSkipChildren, nil
+			} else {
+				if n.Attributes() != nil {
+					writeAttributes(n)
+					write("\n")
+				}
 			}
 
 			write("\n")
