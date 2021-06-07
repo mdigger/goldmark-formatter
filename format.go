@@ -13,7 +13,10 @@ import (
 	"github.com/yuin/goldmark/text"
 )
 
-// Format write reformatted markdown source to w.
+// Format write reformatted markdown source.
+//
+// Use internal markdown parser with extensions GFM, DefinitionList,
+// Footnote, LineBlocks, BlockAttributes and other.
 func Format(source []byte, w io.Writer, opts ...parser.ParseOption) error {
 	md := goldmark.New(
 		goldmark.WithExtensions(
@@ -29,8 +32,11 @@ func Format(source []byte, w io.Writer, opts ...parser.ParseOption) error {
 	)
 	doc := md.Parser().Parse(
 		text.NewReader(source), opts...)
-	return render(w, source, doc)
+	return Render(w, source, doc)
 }
+
+// Markdown is a markdown format renderer.
+var Markdown renderer.Renderer = new(markdownRenderer)
 
 type markdownRenderer struct{}
 
@@ -39,8 +45,5 @@ func (*markdownRenderer) AddOptions(opts ...renderer.Option) {}
 
 // Write render node as Markdown.
 func (*markdownRenderer) Render(w io.Writer, source []byte, node ast.Node) (err error) {
-	return render(w, source, node)
+	return Render(w, source, node)
 }
-
-// Markdown is a markdown format renderer.
-var Markdown renderer.Renderer = new(markdownRenderer)

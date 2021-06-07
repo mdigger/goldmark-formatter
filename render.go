@@ -36,8 +36,8 @@ var (
 	}
 )
 
-// Write render node as Markdown.
-func render(w io.Writer, source []byte, node ast.Node) (err error) {
+// Render write node as Markdown o writer.
+func Render(w io.Writer, source []byte, node ast.Node) (err error) {
 	defer func() {
 		if p := recover(); p != nil && err == nil {
 			if e, ok := p.(error); ok {
@@ -145,7 +145,7 @@ func render(w io.Writer, source []byte, node ast.Node) (err error) {
 			if entering {
 				var buf bytes.Buffer
 				for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-					if err = render(&buf, source, child); err != nil {
+					if err = Render(&buf, source, child); err != nil {
 						return ast.WalkStop, err
 					}
 				}
@@ -235,7 +235,7 @@ func render(w io.Writer, source []byte, node ast.Node) (err error) {
 				// all ListItems
 				for nl := n.FirstChild(); nl != nil; nl = nl.NextSibling() {
 					for chld := nl.FirstChild(); chld != nil; chld = chld.NextSibling() {
-						if err = render(&buf, source, chld); err != nil {
+						if err = Render(&buf, source, chld); err != nil {
 							return ast.WalkStop, err
 						}
 					}
@@ -413,7 +413,7 @@ func render(w io.Writer, source []byte, node ast.Node) (err error) {
 				write("[^%d]: ", n.Index)
 				var buf bytes.Buffer
 				for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-					if err = render(&buf, source, child); err != nil {
+					if err = Render(&buf, source, child); err != nil {
 						return ast.WalkStop, err
 					}
 				}
@@ -462,7 +462,7 @@ func render(w io.Writer, source []byte, node ast.Node) (err error) {
 
 				var buf bytes.Buffer
 				for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-					if err = render(&buf, source, child); err != nil {
+					if err = Render(&buf, source, child); err != nil {
 						return ast.WalkStop, err
 					}
 				}
@@ -491,7 +491,7 @@ func render(w io.Writer, source []byte, node ast.Node) (err error) {
 					column := 0
 					for cell := row.FirstChild(); cell != nil; cell = cell.NextSibling() {
 						for child := cell.FirstChild(); child != nil; child = child.NextSibling() {
-							if err = render(&buf, source, child); err != nil {
+							if err = Render(&buf, source, child); err != nil {
 								return ast.WalkStop, err
 							}
 						}
