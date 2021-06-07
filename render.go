@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
+	"os"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -34,6 +36,7 @@ var (
 		"&mdash;":  `---`,
 		"&hellip;": `...`,
 	}
+	Logger = log.New(os.Stderr, "", 0)
 )
 
 // Render write node as Markdown o writer.
@@ -573,6 +576,11 @@ func Render(w io.Writer, source []byte, node ast.Node) (err error) {
 				}
 			} else {
 				write("\n")
+			}
+
+		default:
+			if Logger != nil && entering {
+				Logger.Printf("WARNING: unsupported AST %v type", node.Kind())
 			}
 		}
 
