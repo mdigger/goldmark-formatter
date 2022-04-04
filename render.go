@@ -457,9 +457,7 @@ func Render(w io.Writer, source []byte, node ast.Node) (err error) {
 			}
 
 		case *east.DefinitionTerm:
-			if !entering {
-				write("\n")
-			}
+			write("\n")
 
 		case *east.DefinitionDescription:
 			if entering {

@@ -257,3 +257,13 @@ The lines can be hard-wrapped if needed.
     Righteous Samuel L. Constable, Jr.
 | 200 Main St.
 | Berkeley, CA 94718
+
+
+Term
+: Description of term
+
+Term 2
+: Description of term 2
+
+Term 3
+: Description of term 3
