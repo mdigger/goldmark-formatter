@@ -1,8 +1,7 @@
-github.com/mdigger/goldmark-attributes v0.0.0-20210529130523-52da21a6bf2b h1:b7OaN0oQFTn5bhUhbNVA7q82fF5hnzNFhuYKDqJ78Ag=
-github.com/mdigger/goldmark-attributes v0.0.0-20210529130523-52da21a6bf2b/go.mod h1:9c4hA7YdGQGp2KDiT149eXUg8Y6kFZNPo6hSBS68zV0=
-github.com/mdigger/goldmark-lineblocks v0.0.0-20210607112808-0ace3aa9a7d3 h1:l9zG/Y6Ce1Ge78KG94ZhZA8cE5yIo2UN37sv3yFGocI=
-github.com/mdigger/goldmark-lineblocks v0.0.0-20210607112808-0ace3aa9a7d3/go.mod h1:FFIXm9N+OYeUzXLbjDj/v+caHaR9Acba7wvU5icSINw=
-github.com/yuin/goldmark v1.3.7/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1Zlc8k=
+github.com/mdigger/goldmark-attributes v0.0.0-20250724115859-bd3108091530 h1:PtnMRIkeWQi6FgIdfI1mtm+cMX1g1KVs+0NuJYeT8Tw=
+github.com/mdigger/goldmark-attributes v0.0.0-20250724115859-bd3108091530/go.mod h1:Df2jMu8JhRCOgI3hp7CU8Y8Rjw+uaOySYtZk+P6+Vj0=
+github.com/mdigger/goldmark-lineblocks v0.0.0-20250724121033-aebb4b99d96d h1:Ng8kOaunoVej/ELMY4rkV/8Wh973x0AAtPCm7G/4L2w=
+github.com/mdigger/goldmark-lineblocks v0.0.0-20250724121033-aebb4b99d96d/go.mod h1:+Tfc1Vglc5AJPSdrHpkJl1+c+6xzb/16tka5+76XA5I=
 github.com/yuin/goldmark v1.7.13 h1:GPddIs617DnBLFFVJFgpo1aBfe/4xcvMc3SB5t/D0pA=
 github.com/yuin/goldmark v1.7.13/go.mod h1:ip/1k0VRfGynBgxOz0yCqHrbZXhcjxyuS66Brc7iBKg=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
