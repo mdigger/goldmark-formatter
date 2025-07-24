@@ -299,7 +299,7 @@ func Render(w io.Writer, source []byte, node ast.Node) (err error) {
 
 		case *ast.TextBlock:
 			if !entering {
-				if _, ok := n.NextSibling().(ast.Node); ok && n.FirstChild() != nil {
+				if n.FirstChild() != nil {
 					write("\n")
 				}
 			}

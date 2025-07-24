@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 
@@ -27,11 +26,11 @@ func main() {
 	flag.Parse()
 
 	// load markdown
-	source, err := ioutil.ReadAll(os.Stdin)
+	source, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		log.Fatal(err)
 	}
-	var out = os.Stdout
+	out := os.Stdout
 
 	// decode metadata if exists
 	if bytes.HasPrefix(source, []byte("---\n")) {
